@@ -1,0 +1,33 @@
+# FastAPI To-Do List
+
+A simple, in-memory CRUD API for managing a To-Do list, built with Python and FastAPI.
+
+## How to Run
+
+Make sure you have your virtual environment activated, then run:
+`uvicorn main:app --reload`
+
+## Endpoints
+
+| Operation | Method | Endpoint      | Description              |
+| --------- | ------ | ------------- | ------------------------ |
+| Info      | GET    | `/`           | API version and name     |
+| Health    | GET    | `/health`     | Server health check      |
+| Read All  | GET    | `/tasks`      | Returns all tasks        |
+| Read One  | GET    | `/tasks/{id}` | Returns a specific task  |
+| Create    | POST   | `/tasks`      | Creates a new task       |
+| Update    | PUT    | `/tasks/{id}` | Updates an existing task |
+| Delete    | DELETE | `/tasks/{id}` | Deletes a task           |
+
+## Terminal Test Example
+
+cmd.exe /c 'curl -i -X PUT http://localhost:8000/tasks/1 -H "Content-Type: application/json" -d "{\"done\":false}"'
+HTTP/1.1 200 OK
+date: Sat, 18 Jul 2026 01:16:25 GMT
+server: uvicorn
+content-length: 44
+content-type: application/json
+
+## Swagger UI Dashboard
+
+![Swagger UI](swagger.png)
