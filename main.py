@@ -23,20 +23,24 @@ class TaskUpdate(BaseModel):
 
 @app.get("/")
 def read_root():
+    """Root endpoint that returns basic information about the API."""
     return {"name": "Task API", "version": "1.0", "endpoints": "/tasks"}
 
 @app.get("/health")
 def check_health():
+    """Check the health of the API."""
     return {"status": "Ok"}
 
 # Tasks
 @app.get("/tasks")
 def get_tasks():
+    """Get a list of all tasks."""
     return task_db
 
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
+    """Get a task by its ID."""
     for task in task_db:
         if task["id"] == task_id:
             return task
@@ -50,7 +54,7 @@ def get_task(task_id: int):
 
 @app.post("/tasks", status_code= 201)
 def create_task(task_data: TaskCreate):
-    
+    """Create a new task with the given title. The task will be marked as not done by default."""  
 
 #we will manually check if the title is empty and return a 400 error if it is
     if not task_data.title.strip():
@@ -75,6 +79,7 @@ def create_task(task_data: TaskCreate):
 
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task_update: TaskUpdate):
+    """Update the title and/or done status of a task with the given ID."""
     if task_update.title is None and task_update.done is None:
         return JSONResponse(
             status_code = 400,
@@ -105,6 +110,7 @@ def update_task(task_id: int, task_update: TaskUpdate):
 
 @app.delete("/tasks/{task_id}")
 def delete_task(task_id: int):
+    """Delete a task with the given ID."""
     for task in task_db:
         if task["id"] == task_id:
             task_db.remove(task)
