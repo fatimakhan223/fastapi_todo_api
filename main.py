@@ -1,15 +1,48 @@
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import sqlite3
 
 
 app = FastAPI()
 
-task_db = [
-    {"id": 1, "title": "Assingment 1", "done": True},
-    {"id": 2, "title": "Assignment 2", "done": False},
-    {"id": 3, "title": "Assignment 3", "done": False}
-]
+def init_db():
+    # 1.connect to the file task.db (it will create if not exist)
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
+
+    # 2. create the table if not exists
+    cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks ( 
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done BOOLEAN NOT NULL DEFAULT 0
+            )
+""")
+
+    # 3. CHECK IF THE TABLE IS EMPTY
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    count = cursor.fetchone()[0]
+
+    # 4. if empty insert the 3 default tasks
+    if count == 0:
+        cursor.executemany(
+            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            [
+                ("Assignment 1", True),
+                ("Assignment 2", True),
+                ("Assignment 3", False),
+
+            ]
+        )
+
+        conn.commit()
+
+    conn.close()
+
+
+init_db()
+
 
 class TaskCreate(BaseModel):
     title:str
