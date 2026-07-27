@@ -31,3 +31,18 @@ content-type: application/json
 ## Swagger UI Dashboard
 
 ![Swagger UI](swagger.png)
+
+## Database Storage
+
+This project uses **SQLite** because it is a lightweight database that requires no external servers or installation. The data is stored locally in a file named `tasks.db`.
+
+Because of the automatic initialization script in `main.py`, the database file and the `tasks` table are automatically created the first time you run `uvicorn main:app --reload`.
+
+### Example SQL Query
+
+To find all completed tasks manually, you can run:
+`SELECT * FROM tasks WHERE done = 1;`
+
+### Database Viewer
+
+![Database Viewer](db_viewer.png)
