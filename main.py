@@ -159,41 +159,73 @@ def update_task(task_id: int, task_update: TaskUpdate):
             status_code = 400,
             content = {"error": "Body cannot be empty"}
         )
-    
-    #loop to find the task
-    for task in task_db:
-        if task["id"] == task_id:
-            if task_update.title is not None:
-                if not task_update.title.strip():
-                    return JSONResponse(
-                        status_code = 400,
-                        content = {"error": "Title cannot be empty"}
-                    )
-                task["title"] = task_update.title
+    #connect to the database
+    conn = sqlite3.connect("tasks.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
+
+    # Ask the database if task exists
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    existing_task = cursor.fetchone()
+
+
+    #if task not exist hang up and return 404
+    if existing_task is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Task {task_id} not found"}
+        )
+
+    if task_update.title is not None:
+        if not task_update.title.strip():
+            conn.close()
+            return JSONResponse(
+                status_code= 400,
+                content={"error": "Title cannot be empty."}
+            )
+        cursor.execute("UPDATE tasks SET title = ? WHERE id = ?", (task_update.title, task_id))
+
+
+    if task_update.done is not None:
         if task_update.done is not None:
-            task["done"] = task_update.done
+            cursor.execute("UPDATE tasks SET done = ? WHERE id = ?",(task_update), task_id)
 
-        return task
-    
-    return JSONResponse(
-        status_code = 404,
-        content = {"error": f"Task {task_id} not found"}
-    )
+    conn.commit()
+
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    updated_task = cursor.fetchone()
+
+    conn.close()
+
+    return updated_task
 
 
-@app.delete("/tasks/{task_id}")
+
+@app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
     """Delete a task with the given ID."""
-    for task in task_db:
-        if task["id"] == task_id:
-            task_db.remove(task)
-            return Response(status_code=204)
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
+    
+    # 1. Check if the task exists first
+    cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        return JSONResponse(
+            status_code=404, 
+            content={"error": f"Task {task_id} not found"}
+        )
         
-    return JSONResponse(
-        status_code = 404,
-        content = {"error": f"Task {task_id} not found"}
-    )
+    # 2. If it exists, execute the DELETE command
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    
+    # 3. Save the deletion permanently
+    conn.commit()
+    conn.close()
+    
+    return Response(status_code=204)
                 
 
     
