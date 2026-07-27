@@ -68,21 +68,50 @@ def check_health():
 @app.get("/tasks")
 def get_tasks():
     """Get a list of all tasks."""
-    return task_db
+    conn = sqlite3.connect("tasks.db")
+
+    # This magic line tells SQLite to return data like a Python dictionary
+    # instead of a plain list of values. FastAPI needs this to make JSON!
+
+    conn.row_factory = sqlite3.Row
+
+    cursor = conn.cursor()
+
+    # Get everything from the tasks table
+    cursor.execute("SELECT * FROM tasks")
+
+    # Grab the results
+
+    tasks = cursor.fetchall()
+
+    conn.close()
+
+    return tasks
 
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
     """Get a task by its ID."""
-    for task in task_db:
-        if task["id"] == task_id:
-            return task
-        
+    conn = sqlite3.connect("tasks.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-    return JSONResponse(
-        status_code = 404,
-        content = {"error": f"Task {task_id} not found" }
-    )
+    # Speak SQL: "Get all columns from tasks where the ID matches this number"
+    # The (?, ) safely injects the task_id into the SQL command
+
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id))
+
+    #Grab just the one single row
+    task = cursor.fetchone()
+    conn.close()
+
+    if task is None:
+        return JSONResponse(
+            status_code = 404,
+            content = {"error": f"Task {task_id} not found" }
+        )
+
+    return task
 
 
 @app.post("/tasks", status_code= 201)
