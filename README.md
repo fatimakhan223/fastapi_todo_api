@@ -46,3 +46,18 @@ To find all completed tasks manually, you can run:
 ### Database Viewer
 
 ![Database Viewer](db_viewer.png)
+
+## Week 3: PostgreSQL & Docker Infrastructure
+
+This API has been upgraded to run inside Docker containers using a PostgreSQL database.
+
+**Architecture Proof:**
+By utilizing the Repository pattern, the in-memory data store and SQLite database were completely swapped out for a robust PostgreSQL database. The transition was seamless—the service layer and API routes (`GET`, `POST`, `PUT`, `DELETE`) remained 100% unchanged. The client cannot tell the difference, proving the effectiveness of decoupled architecture.
+
+**Persistence Test:**
+Data persistence was verified by completing the following steps:
+
+1. Spun up the stack using `docker compose up`.
+2. Created a new task using the `POST /tasks` endpoint.
+3. Completely destroyed the containers using `docker compose down`.
+4. Restarted the stack and verified via `GET /tasks` that the newly created row survived the destruction via Docker volumes.

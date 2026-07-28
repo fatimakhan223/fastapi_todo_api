@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  # 1. The Database Container
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: todo_db
+    # This 'volumes' block is what makes your data survive restarts!
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # 2. The FastAPI Container
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    # This injects your .env file into the container
+    env_file:
+      - .env
+    # Tells Docker: "Don't start the API until the DB is ready"
+    depends_on:
+      - db
+
+# This declares the permanent hard drive space for Postgres
+volumes:
+  postgres_data:

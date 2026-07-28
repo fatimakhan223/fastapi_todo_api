@@ -1,45 +1,66 @@
+import os
+import time
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import sqlite3
 
+
+
+# Load the variables from your .env file
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 app = FastAPI()
 
+# Helper function to open a Postgres connection
+def get_db_connection():
+    # RealDictCursor makes Postgres return data as dictionaries (just like sqlite3.Row did)
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
 def init_db():
-    # 1.connect to the file task.db (it will create if not exist)
-    conn = sqlite3.connect("tasks.db")
+    # --- NEW RETRY LOGIC ---
+    retries = 5
+    while retries > 0:
+        try:
+            conn = get_db_connection()
+            break  # If successful, break out of the loop!
+        except psycopg2.OperationalError:
+            print(f"Database not ready yet, retrying in 2 seconds... ({retries} attempts left)")
+            time.sleep(2)
+            retries -= 1
+            
+    if retries == 0:
+        raise Exception("Could not connect to the database after 5 attempts.")
+    # -----------------------
+
     cursor = conn.cursor()
-
-    # 2. create the table if not exists
+    
     cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tasks ( 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            done BOOLEAN NOT NULL DEFAULT 0
-            )
-""")
-
-    # 3. CHECK IF THE TABLE IS EMPTY
+        CREATE TABLE IF NOT EXISTS tasks (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            done BOOLEAN NOT NULL DEFAULT FALSE
+        )
+    """)
+    
     cursor.execute("SELECT COUNT(*) FROM tasks")
-    count = cursor.fetchone()[0]
-
-    # 4. if empty insert the 3 default tasks
+    count = cursor.fetchone()['count']
+    
     if count == 0:
         cursor.executemany(
-            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            "INSERT INTO tasks (title, done) VALUES (%s, %s)",
             [
-                ("Assignment 1", True),
-                ("Assignment 2", True),
-                ("Assignment 3", False),
-
+                ("Assignment 1", True), 
+                ("Assignment 2", False), 
+                ("Assignment 3", False)
             ]
         )
-
         conn.commit()
-
+        
     conn.close()
-
 
 init_db()
 
@@ -68,38 +89,23 @@ def check_health():
 @app.get("/tasks")
 def get_tasks():
     """Get a list of all tasks."""
-    conn = sqlite3.connect("tasks.db")
-
-    # This magic line tells SQLite to return data like a Python dictionary
-    # instead of a plain list of values. FastAPI needs this to make JSON!
-
-    conn.row_factory = sqlite3.Row
-
+    conn = get_db_connection()
     cursor = conn.cursor()
-
-    # Get everything from the tasks table
     cursor.execute("SELECT * FROM tasks")
-
-    # Grab the results
-
     tasks = cursor.fetchall()
-
     conn.close()
-
     return tasks
 
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int):
     """Get a task by its ID."""
-    conn = sqlite3.connect("tasks.db")
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Speak SQL: "Get all columns from tasks where the ID matches this number"
-    # The (?, ) safely injects the task_id into the SQL command
 
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
 
     #Grab just the one single row
     task = cursor.fetchone()
@@ -126,106 +132,67 @@ def create_task(task_data: TaskCreate):
         )
     
     #connect to the database
-    conn = sqlite3.connect("tasks.db")
-    conn.row_factory = sqlite3.Row
+    conn = get_db_connection()
     cursor = conn.cursor()
 
-    #Insert a new row into the tasks table
+    # Insert a new row into the tasks table AND return the new id
     cursor.execute(
-        "INSERT INTO tasks (title, done) VALUES (?, ?)",
+        "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id",
         (task_data.title, False)
     )
-
-    #save the changes permanently
+    
+    new_id = cursor.fetchone()['id']
     conn.commit()
-
-    new_id = cursor.lastrowid
-
-    # fetch the newly created task so we can return it to the user
-
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (new_id,))
+    
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (new_id,))
     new_task = cursor.fetchone()
-
     conn.close()
-
-    return new_task()
+    
+    return new_task
 
 
 @app.put("/tasks/{task_id}")
 def update_task(task_id: int, task_update: TaskUpdate):
-    """Update the title and/or done status of a task with the given ID."""
     if task_update.title is None and task_update.done is None:
-        return JSONResponse(
-            status_code = 400,
-            content = {"error": "Body cannot be empty"}
-        )
-    #connect to the database
-    conn = sqlite3.connect("tasks.db")
-    conn.row_factory = sqlite3.Row
+        return JSONResponse(status_code=400, content={"error": "Body cannot be empty"})
+    
+    conn = get_db_connection()
     cursor = conn.cursor()
-
-
-    # Ask the database if task exists
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-    existing_task = cursor.fetchone()
-
-
-    #if task not exist hang up and return 404
-    if existing_task is None:
+    
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
+    if cursor.fetchone() is None:
         conn.close()
-        return JSONResponse(
-            status_code=404,
-            content={"error": f"Task {task_id} not found"}
-        )
-
+        return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})
+    
     if task_update.title is not None:
         if not task_update.title.strip():
             conn.close()
-            return JSONResponse(
-                status_code= 400,
-                content={"error": "Title cannot be empty."}
-            )
-        cursor.execute("UPDATE tasks SET title = ? WHERE id = ?", (task_update.title, task_id))
-
-
+            return JSONResponse(status_code=400, content={"error": "Title cannot be empty"})
+        cursor.execute("UPDATE tasks SET title = %s WHERE id = %s", (task_update.title, task_id))
+        
     if task_update.done is not None:
-        if task_update.done is not None:
-            cursor.execute("UPDATE tasks SET done = ? WHERE id = ?",(task_update), task_id)
-
+        cursor.execute("UPDATE tasks SET done = %s WHERE id = %s", (task_update.done, task_id))
+        
     conn.commit()
-
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     updated_task = cursor.fetchone()
-
     conn.close()
-
+    
     return updated_task
-
-
 
 @app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
-    """Delete a task with the given ID."""
-    conn = sqlite3.connect("tasks.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Check if the task exists first
-    cursor.execute("SELECT id FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT id FROM tasks WHERE id = %s", (task_id,))
     if cursor.fetchone() is None:
         conn.close()
-        return JSONResponse(
-            status_code=404, 
-            content={"error": f"Task {task_id} not found"}
-        )
+        return JSONResponse(status_code=404, content={"error": f"Task {task_id} not found"})
         
-    # 2. If it exists, execute the DELETE command
-    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-    
-    # 3. Save the deletion permanently
+    cursor.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
     conn.commit()
     conn.close()
     
     return Response(status_code=204)
-                
-
-    
